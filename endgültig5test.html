@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digi Expert Team Table</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+      min-width: 100px;
+    }
+    td[contenteditable]:focus, th[contenteditable]:focus {
+      outline: 2px solid #0078D7;
+    }
+    #controls {
+      margin-bottom: 15px;
+    }
+    input[type="text"].column-search {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px;
+      margin: 0;
+    }
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCtJ2c97DJ2d4BNNhn4i6_uk60xTSkWfuQ",
+      authDomain: "dma-final-tabelle.firebaseapp.com",
+      databaseURL: "https://dma-final-tabelle-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "dma-final-tabelle",
+      storageBucket: "dma-final-tabelle.firebasestorage.app",
+      messagingSenderId: "705403508742",
+      appId: "1:705403508742:web:e696c5b1014f3511018b87"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const dbRef = ref(db, "tableData");
+
+    const headerRow = document.getElementById("headerRow");
+    const searchRow = document.getElementById("searchRow");
+    const tableBody = document.getElementById("tableBody");
+
+    function createCell(content = "", bgColor = "", textColor = "") {
+      const td = document.createElement("td");
+      td.contentEditable = true;
+      td.innerHTML = content;
+      if (bgColor) td.style.backgroundColor = bgColor;
+      if (textColor) td.style.color = textColor;
+
+      td.addEventListener("blur", () => {
+        const linkRegex = /(https?:\/\/\S+)/g;
+        td.innerHTML = td.innerText.replace(linkRegex, '<a href="$1" target="_blank">$1</a>');
+        saveTable();
+      });
+
+      td.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const color = prompt("Hintergrundfarbe als HEX (z. B. #FF5733):");
+        if (color) {
+          td.style.backgroundColor = color;
+          saveTable();
+        }
+
+        const textColor = prompt("Schriftfarbe als HEX (z.B. #000000):");
+        if (textColor) {
+          td.style.color = textColor;
+          saveTable();
+        }
+      });
+
+      return td;
+    }
+
+    function buildTable(data) {
+      headerRow.innerHTML = "";
+      searchRow.innerHTML = "";
+      tableBody.innerHTML = "";
+
+      const cols = data && data[0] ? data[0].length : 9;
+      const rows = data ? data.length - 1 : 22;
+
+      // Header erstellen
+      for (let c = 0; c < cols; c++) {
+        const headerData = data ? data[0][c] : null;
+        const th = document.createElement("th");
+        th.contentEditable = true;
+        th.innerText = headerData?.content || `Spalte ${c + 1}`;
+        if (headerData?.bgColor) th.style.backgroundColor = headerData.bgColor;
+        if (headerData?.textColor) th.style.color = headerData.textColor;
+
+         th.addEventListener("blur", () => {
+            saveTable();
+         });
+
+        th.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            const color = prompt("Hintergrundfarbe als HEX (z.B. #FF5733):");
+            if (color) {
+              th.style.backgroundColor = color;
+              saveTable();
+            }
+
+            const textColor = prompt("Schriftfarbe als HEX (z.B. #000000):");
+            if (textColor) {
+              th.style.color = textColor;
+              saveTable();
+            }
+          });
+
+        headerRow.appendChild(th);
+
+        const searchInput = document.createElement("input");
+        searchInput.type = "text";
+        searchInput.className = "column-search";
+        searchInput.dataset.index = c;
+        searchInput.onkeyup = filterByColumn;
+
+        const searchTh = document.createElement("th");
+        searchTh.appendChild(searchInput);
+        searchRow.appendChild(searchTh);
+      }
+
+      // Tabellenkörper erstellen
+      for (let r = 0; r < rows; r++) {
+        const row = document.createElement("tr");
+        for (let c = 0; c < cols; c++) {
+          const cellData = data && data[r + 1] ? data[r + 1][c] : null;
+          const content = cellData?.content || "";
+          const bgColor = cellData?.bgColor || "";
+          const textColor = cellData?.textColor || "";
+          row.appendChild(createCell(content, bgColor, textColor));
+        }
+        tableBody.appendChild(row);
+      }
+    }
+
+
+    function addRow() {
+      const row = document.createElement("tr");
+      const cols = headerRow.children.length;
+      for (let c = 0; c < cols; c++) {
+        row.appendChild(createCell());
+      }
+      tableBody.appendChild(row);
+      saveTable();
+    }
+
+    function deleteRow() {
+      if (tableBody.rows.length > 0) {
+        tableBody.deleteRow(-1);
+        saveTable();
+      } else {
+        alert("Keine Zeilen mehr zum Löschen.");
+      }
+    }
+
+    function addColumn() {
+      const colIndex = headerRow.children.length;
+
+      const th = document.createElement("th");
+      th.contentEditable = true;
+      th.innerText = `Spalte ${colIndex + 1}`;
+       th.addEventListener("blur", () => {
+            saveTable();
+         });
+
+        th.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            const color = prompt("Hintergrundfarbe als HEX (z.B. #FF5733):");
+            if (color) {
+              th.style.backgroundColor = color;
+              saveTable();
+            }
+
+            const textColor = prompt("Schriftfarbe als HEX (z.B. #000000):");
+            if (textColor) {
+              th.style.color = textColor;
+              saveTable();
+            }
+          });
+
+      headerRow.appendChild(th);
+
+      const searchInput = document.createElement("input");
+      searchInput.type = "text";
+      searchInput.className = "column-search";
+      searchInput.dataset.index = colIndex;
+      searchInput.onkeyup = filterByColumn;
+
+      const searchTh = document.createElement("th");
+      searchTh.appendChild(searchInput);
+      searchRow.appendChild(searchTh);
+
+      Array.from(tableBody.rows).forEach(row => {
+        row.appendChild(createCell());
+      });
+      saveTable();
+    }
+
+    function deleteColumn() {
+      const colIndex = headerRow.children.length - 1;
+      if (colIndex < 0) {
+        alert("Keine Spalten mehr zum Löschen.");
+        return;
+      }
+
+      headerRow.removeChild(headerRow.lastChild);
+      searchRow.removeChild(searchRow.lastChild);
+
+      Array.from(tableBody.rows).forEach(row => {
+        row.deleteCell(colIndex);
+      });
+
+      saveTable();
+    }
+
+    function filterByColumn() {
+      const inputs = document.querySelectorAll(".column-search");
+      const rows = tableBody.getElementsByTagName("tr");
+
+      for (let i = 0; i < rows.length; i++) {
+        let visible = true;
+        for (let j = 0; j < inputs.length; j++) {
+          const filter = inputs[j].value.toLowerCase();
+          const cellText = rows[i].cells[j]?.innerText.toLowerCase() || "";
+          if (filter && !cellText.includes(filter)) {
+            visible = false;
+            break;
+          }
+        }
+        rows[i].style.display = visible ? "" : "none";
+      }
+    }
+
+    function saveTable() {
+      const data = [];
+
+      // Header-Daten speichern (inkl. Hintergrundfarbe)
+      const headers = Array.from(headerRow.children).map(th => ({
+        content: th.innerText,
+        bgColor: th.style.backgroundColor,
+        textColor: th.style.color
+      }));
+      data.push(headers);
+
+      // Tabellenkörper-Daten speichern (inkl. Hintergrundfarbe)
+      Array.from(tableBody.rows).forEach(row => {
+        const rowData = [];
+        Array.from(row.cells).forEach(cell => {
+          rowData.push({
+            content: cell.innerHTML,
+            bgColor: cell.style.backgroundColor,
+            textColor: cell.style.color
+          });
+        });
+        data.push(rowData);
+      });
+
+      set(dbRef, data);
+    }
+
+
+    get(child(ref(db), "tableData")).then(snapshot => {
+      const data = snapshot.exists() ? snapshot.val() : null;
+      buildTable(data);
+    });
+
+    window.addRow = addRow;
+    window.addColumn = addColumn;
+    window.deleteRow = deleteRow;
+    window.deleteColumn = deleteColumn;
+  </script>
+</head>
+<body>
+  <h2>Digi Expert Team Table</h2>
+
+  <div id="controls">
+    <button onclick="addRow()">Zeile hinzufügen</button>
+    <button onclick="deleteRow()">Zeile löschen</button>
+    <button onclick="addColumn()">Spalte hinzufügen</button>
+    <button onclick="deleteColumn()">Spalte löschen</button>
+  </div>
+
+  <table id="mainTable">
+    <thead>
+      <tr id="headerRow"></tr>
+      <tr id="searchRow"></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</body>
+</html>
